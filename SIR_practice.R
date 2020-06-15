@@ -2,36 +2,72 @@
 
 pacman::p_load("EpiModel")
 
-# parameterize #
-# let's say our disease has a likelihood of transmission/single act of 0.3
-#                           a rate of acts per person per time of 10 sneezes/ 60 minutes or 1 sneeze/6 minutes or 0.167
-#                           a recovery rate of 1/14 days of disease duration
-#                           an arrival rate/entry/birth rate of 2/100 (let's imagine people enter/exit the population at the same rate)
-#                           a death rate of 2/100 among susceptible people /underlying pop death rate
-#                           a death rate of 4/100  among infected people
-#                           a departure rate of 2/100 among recovered people
+# define SEIR function 
 
-p <- param.dcm(inf.prob = 0.3, act.rate = 1, rec.rate = 1/14, 
-               a.rate = 2/100, ds.rate = 2/100,
-               di.rate = 4/100, dr.rate = 2/100)
+SEIR <- function(t, t0, parms) {
+  with(as.list(c(t0, parms)), {
+    
+    # Population size
+    num <- s.num + e.num + i.num + r.num
+    
+    # Effective contact rate and FOI from a rearrangement of Beta * c * D
+    ce <- R0 / i.dur
+    lambda <- ce * i.num/num
+    
+    dS <- -lambda*s.num
+    dE <- lambda*s.num - (1/e.dur)*e.num
+    dI <- (1/e.dur)*e.num - (1 - cfr)*(1/i.dur)*i.num - cfr*(1/i.dur)*i.num
+    dR <- (1 - cfr)*(1/i.dur)*i.num
+    
+    # Compartments and flows are part of the derivative vector
+    # Other calculations to be output are outside the vector, 
+    # but within the containing list
+    list(c(dS, dE, dI, dR, 
+           se.flow = lambda * s.num,
+           ei.flow = (1/e.dur) * e.num,
+           ir.flow = (1 - cfr)*(1/i.dur) * i.num,
+           d.flow = cfr*(1/i.dur)*i.num),
+         num = num,
+         i.prev = i.num / num,
+         ei.prev = (e.num + i.num)/num)
+  })
+}
+
+# parameterize #
+
+p <- param.dcm(R0 = 1.0, 
+               e.dur = 150, # est 150 people on an international flight into the country 
+               i.dur = 1, # should be the number of cases at t0
+               cfr = c(0.2, 0.4, 0.6, 0.8, 1.0))
 
 #set initial state of n susceptible and infected at first time point (t1)
-# let's say 500 people are susceptible, 1 are infected, and 0 are recovered/removed from susceptibility
+# let's say 500 people are susceptible, 1 are infected, and 0
+# are recovered/removed from susceptibility
+# initial state of 0 flowing from one compartment to another
+# country wide model
 
-i <- init.dcm(s.num = 500, i.num = 1, r.num = 0)
+i <- init.dcm(s.num = 144733050,
+              e.num = 144733050,
+              i.num = 1, 
+              r.num = 0, 
+              se.flow = 0, 
+              ei.flow = 0, 
+              ir.flow = 0, 
+              d.flow = 0)
 
-# collect model controls, model type and number of time steps (ex: in days) of the simulation, dt = fraction of time units, default = 1
+# collect model controls, model type and number of time steps (ex: in days) 
+#    of the simulation, dt = fraction of time units, default = 1
 # can add more controls as necessary for time lagged variables like interventions
 
-c <- control.dcm(type = "SIR", nsteps = 500)
+c <- control.dcm(new.mod = SEIR, 
+                 nsteps = 500, 
+                 dt = 1, 
+                 dede = TRUE)
 
-# deterministic compartmental model #
-
-# uses the deq solver in deSolve 
 # produces param, control, and epi
-# param: parameters passed to the model through the p data object of class param.dcm
-# control: controls passed to the model through the c data object of class control.dcm
-# epi: a list of data frames, one for each epidemiological output from the model
+# p: parameters passed to the model through the p data object of class param.dcm
+# c: controls passed to the model through the c data object of class control.dcm
+# i: a list of data frames, one for each epidemiological output from the model
 #     use as.data.frame.dcm to extract results as dataframes, 
 #     summarize results with summary.dcm function on the m object of class dcm
 #     plot the m object with plot.dcm
@@ -40,52 +76,27 @@ c <- control.dcm(type = "SIR", nsteps = 500)
 m <- dcm(p, i, c)
 
 # "Printing the model object provides basic information on model input and output,
-# including model parameters and data variables for plotting and analysis." -tutorial
-#     use as.data.frame to extract results as dataframes, 
-#     summarize results with summary.dcm function on the m object of class dcm
-#     plot the m object with plot.dcm
-#     plot a flow diagram with comp_plot function on dcm object
+# including model parameters and data variables for plotting and analysis." 
+#   use as.data.frame to extract results as dataframes, 
+#   summarize results with summary.dcm function on the m object of class dcm
+#   plot the m object with plot.dcm
+#    plot a flow diagram with comp_plot function on dcm object
 
 m_df <- as.data.frame(m)
 
-summary(m, at = 250)
+# custom color palette, green = lower CFR, purple = higher
+custpal <- c("#00441b", "#1b7837","#c2a5cf", "#762a83", "#40004b")
 
 #plot disease prevalence
-# plot argument col takes values from RColorBrewer
-plot(m, at = 10, 
-     col = "RdYlBu", grid = TRUE, legend="lim")
+plot(m, 
+     y = "i.num",
+     col = custpal, 
+     main = "CFR Scenarios of Prevalence",
+     grid = TRUE, 
+     legend="full",
+     leg.name = c("CFR = 0.2", "CFR = 0.4", 
+                  "CFR = 0.6", "CFR = 0.8", "CFR = 1.0"),
+     alpha = 0.7)
 
-# Plot each compartment alone
-# prevalence of susceptibles
-plot(m, y = "s.num", popfrac = TRUE, 
-     col = "RdYlBu", grid = TRUE, legend="lim", 
-     leg.name = "Prevalence of n Susceptible")
-
-# Plot number of susceptibles
-plot(m, y = "s.num", popfrac = FALSE, 
-     col = "RdYlBu", grid = TRUE, legend="lim", 
-     leg.name = "n Susceptible")
-
-# Plot multiple runs of multiple compartments together
-plot(m, y = c("s.num", "i.num"),
-     run = 1, xlim = c(0, 50), 
-     col = "RdYlBu", grid = TRUE, legend="lim")
-
-# add = TRUE adds the graph created below to the graph created above
-plot(m, y = c("s.num", "i.num"),
-     run = 1, lty = 2, add = TRUE, col = "RdYlBu", grid = TRUE, 
-     legend="n")
-
-
-
-
-
-
-
-
-
-
-
-
-
-(m_compplot <- comp_plot(m))
+# network plot
+comp_plot(m)
