@@ -39,9 +39,11 @@ n_super_65 = as.integer((cen_df$ga_num[7]/100)*N)
 n_rest_cp <- as.integer(N-n_sub_18-n_super_65)
 
 # number of initial exposed by 
-# first 4 cases identified in GA + 4 est unidentified cases * average household size
+# first cases identified in GA *6
 
-n_exp <- 8 * cen_df$ga_num[27]
+n_0_est <- 4
+
+n_exp <- n_0_est * cen_df$ga_num[27]
 
 ##################################################
 
@@ -83,77 +85,105 @@ SEIR <- function(t, t0, parms) {
 # t0 = Feb 01 2020
 # t500 = June 15 20201
 
+R0_est = 2.73
 # R0 estimate taken from https://rt.live for GA, on 2/26/20 
 # recorded on 6/29/2020 at 1:09 pm
 
-# accouting for interventions at 
+# duration of exposed state
+# assume a 2 week time of exposure and infectious period
+t_dur = 14
+t_inf = 14
+
+# accouting for interventions at as documented by the GADPH
+# https://dph.georgia.gov/covid-19-daily-status-report
+
 # t51 = Large gatherings banned
 # t79 = shelter in place initiated
 # t109 = shelter in place extended for at risk
+int_t <- c(51, 79)
+int_eff_ests <- c(0.01, 0.02)
 
-p <- param.dcm(R0 = 2.73, 
-               e.dur = n_exp, 
-               i.dur = 8, # number of cases at t0, based on GA DPH + est uncaught cases
-               cfr = c(0.2, 0.4, 0.6, 0.8, 1.0))
+# potential activity rates 
+act_rates <- c(0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+#potential infection probabilities
+inf_probs <- c(0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+# potential cfrs
+cfrs <- c(0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+# potential recovery rates
+rec_rates <- c(0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+p <- param.dcm(R0 = R0_est, 
+               e.dur = t_dur, 
+               i.dur = t_inf,
+               inter.eff = int_eff_ests, 
+               inter.start = int_t,
+               cfr = cfrs, 
+               act.rate = act_rates, 
+               inf.prob = inf_probs,
+               rec.rate = rec_rates)
 
 #set initial state of n susceptible and infected at first time point (t1)
 
 i <- init.dcm(s.num = N,
               e.num = n_exp,
-              i.num = 8, 
+              i.num = n_0_est, 
               r.num = 0, 
               se.flow = 0, 
               ei.flow = 0, 
               ir.flow = 0, 
               d.flow = 0)
 
-# collect model controls, model type and number of time steps (ex: in days) 
-#    of the simulation, dt = fraction of time units, default = 1
-# can add more controls as necessary for time lagged variables like interventions
+# collect model controls, model type and number of time steps
 
 c <- control.dcm(new.mod = SEIR, 
                  nsteps = 150, 
                  dt = 1, 
-                 dede = TRUE, 
-                 nsims = 10)
+                 dede = TRUE,
+                 sens.param = TRUE,
+                 nsims = 6)
 
 # produces param, control, and epi
 # p: parameters passed to the model through the p data object of class param.dcm
 # c: controls passed to the model through the c data object of class control.dcm
 # i: a list of data frames, one for each epidemiological output from the model
-#     use as.data.frame.dcm to extract results as dataframes, 
-#     summarize results with summary.dcm function on the m object of class dcm
-#     plot the m object with plot.dcm
-#     plot a flow diagram with comp_plot function on dcm object
 
 m <- dcm(p, i, c)
 
-# "Printing the model object provides basic information on model input and output,
-# including model parameters and data variables for plotting and analysis." 
-#   use as.data.frame to extract results as dataframes, 
-#   summarize results with summary.dcm function on the m object of class dcm
-#   plot the m object with plot.dcm
-#    plot a flow diagram with comp_plot function on dcm object
-
 m_df <- as.data.frame(m)
 
-# custom color palette, green = lower CFR, purple = higher
-custpal <- c("#00441b", "#1b7837","#c2a5cf", "#762a83", "#40004b")
+# check if the model is matching observed cases and see how far off it is
+m_df$se.flow[51] # close enough at 583.95
+m_df$se.flow[79]
 
-#plot disease prevalence
+#plot disease incidence
+
 plot(m, 
-     y = "i.num",
-     col = custpal, 
-     main = "CFR Scenarios of Prevalence",
+     y = "se.flow",
      grid = TRUE, 
      legend="full",
-     leg.name = c("CFR = 0.2", "CFR = 0.4", 
-                  "CFR = 0.6", "CFR = 0.8", "CFR = 1.0"),
      alpha = 0.7, 
      sim.lines = TRUE, 
      sim.alpha = 0.15, 
      ylim = c(0, 2000)
      )
 
+# save best looking model as dataframe 
+
+model_df <- as.data.frame(m, run = 4)
+
+# plot best looking model
+
+# normal scale
+(out_plot = ggplot(model_df) +
+    theme_minimal() + 
+    geom_line(aes(x = time, y = ei.flow), color = "#c2a5cf") +
+    labs(x ="Time (Days)", y = "Cases", 
+         title = "Cases of COVID-19 over First 150 Days", 
+         subtitle = "estimated cases") +
+    xlim(0, 150) + 
+    ylim(0, 2000))
 # done
 

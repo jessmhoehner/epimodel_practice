@@ -13,15 +13,20 @@ pacman::p_load("tidyverse", "lubridate", "readr",
 
 files <- list(
   cen_data = here("epimodel_practice/clean/input/QuickFacts Jun-29-2020.csv"),
+  ga_countycases = here("epimodel_practice/clean/input/countycases.csv"), 
+  ga_deaths = here("epimodel_practice/clean/input/deaths.csv"), 
+  ga_demo = here("epimodel_practice/clean/input/demographics.csv"), 
   
-  cen_clean = here("epimodel_practice/model/input/cendata_clean.csv")
+  cen_clean = here("epimodel_practice/model/input/cendata_clean.csv"), 
+  ga_cc_clean = here("epimodel_practice/model/input/countycases_clean.csv"), 
+  ga_d_clean = here("epimodel_practice/model/input/deaths_clean.csv"), 
+  ga_demo_clean = here("epimodel_practice/model/input/demo_clean.csv")
+  
 )
 
-stopifnot(length(files) == 2)
+stopifnot(length(files) == 8)
 
-# data come from here https://www.census.gov/quickfacts/fact/table/GA/PST045219
-#
-
+# cen_data come from here https://www.census.gov/quickfacts/fact/table/GA/PST045219
 
 cen_df <- as.data.frame(read_delim(files$cen_data, 
                                     delim = ",")) %>%
